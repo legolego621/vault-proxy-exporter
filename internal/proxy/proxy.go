@@ -55,7 +55,7 @@ func (p *Proxy) Run() error {
 	errChan := make(chan error, 1)
 
 	go p.ProxyStart(ctx, &wg, errChan)
-	go updateToken(ctx, &wg, p, errChan)
+	go updateToken(ctx, &wg, p)
 
 	select {
 	case <-ctx.Done():
@@ -128,10 +128,10 @@ func (p *Proxy) ProxyStart(ctx context.Context, wg *sync.WaitGroup, errChan chan
 		Addr: p.AddressServer,
 	}
 
-	errChanLocal := make(chan error, 1)
+	errChanServe := make(chan error, 1)
 
 	go func() {
-		errChanLocal <- server.ListenAndServe()
+		errChanServe <- server.ListenAndServe()
 	}()
 
 	select {
@@ -140,7 +140,7 @@ func (p *Proxy) ProxyStart(ctx context.Context, wg *sync.WaitGroup, errChan chan
 		errChan <- server.Shutdown(ctx)
 
 		return
-	case err := <-errChanLocal:
+	case err := <-errChanServe:
 		if err != nil && err != http.ErrServerClosed {
 			errChan <- fmt.Errorf("server error: %v", err)
 
@@ -176,7 +176,7 @@ func getClientIP(r *http.Request) string {
 	return ip
 }
 
-func updateToken(ctx context.Context, wg *sync.WaitGroup, p *Proxy, errChan chan<- error) {
+func updateToken(ctx context.Context, wg *sync.WaitGroup, p *Proxy) {
 	defer wg.Done()
 
 	log.Info("starting token updater")
@@ -197,9 +197,7 @@ func updateToken(ctx context.Context, wg *sync.WaitGroup, p *Proxy, errChan chan
 
 	// init
 	if err := updater(p); err != nil {
-		errChan <- fmt.Errorf("error updating vault token: %v", err)
-
-		return
+		log.Errorf("error updating vault token: %v", err)
 	}
 
 	for {
@@ -210,9 +208,7 @@ func updateToken(ctx context.Context, wg *sync.WaitGroup, p *Proxy, errChan chan
 			return
 		case <-ticker.C:
 			if err := updater(p); err != nil {
-				errChan <- fmt.Errorf("error getting vault token: %v", err)
-
-				return
+				log.Errorf("error getting vault token: %v", err)
 			}
 
 			log.Debug("vault token successfully updated")
