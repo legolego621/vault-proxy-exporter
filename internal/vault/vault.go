@@ -15,13 +15,17 @@ const (
 )
 
 func ApproleAuthGetToken(cfg *config.Config) (string, error) {
-
 	ctx := context.Background()
+
+	tls := vault.TLSConfiguration{
+		InsecureSkipVerify: cfg.VaultTLSInsecureSkipVerify,
+	}
 
 	// prepare a client with the given base address
 	client, err := vault.New(
 		vault.WithAddress(cfg.VaultEndpoint),
 		vault.WithRequestTimeout(RequestTimeoutSeconds),
+		vault.WithTLS(tls),
 	)
 	if err != nil {
 		return "", fmt.Errorf("error creating vault client: %v", err)
