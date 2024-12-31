@@ -52,12 +52,15 @@ func (c *Config) Load() error {
 		if c.VaultAppRoleID == "" {
 			return fmt.Errorf("env VAULT_PROXY_EXPORTER_VAULT_APPROLE_ID required")
 		}
+
 		if c.VaultAppRoleSecret == "" {
 			return fmt.Errorf("env VAULT_PROXY_EXPORTER_VAULT_APPROLE_SECRET required")
 		}
+
 		if c.VaultAppRolePath == "" {
 			return fmt.Errorf("env VAULT_PROXY_EXPORTER_VAULT_APPROLE_PATH required")
 		}
+
 		if c.VaultApproleTokenUpdatePeriodSeconds <= 5 {
 			return fmt.Errorf("env VAULT_PROXY_EXPORTER_VAULT_APPROLE_TOKEN_UPDATE_PERIOD_SECONDS required and must be > 30")
 		}
@@ -71,6 +74,7 @@ func (c *Config) Load() error {
 			VaultMethodAppRole,
 			VaultMethodToken)
 	}
+
 	return nil
 }
 

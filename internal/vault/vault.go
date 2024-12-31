@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	RequestTimeoutSeconds = 30 * time.Second
+	RequestTimeout = 30 * time.Second
 )
 
 func ApproleAuthGetToken(cfg *config.Config) (string, error) {
@@ -24,7 +24,7 @@ func ApproleAuthGetToken(cfg *config.Config) (string, error) {
 	// prepare a client with the given base address
 	client, err := vault.New(
 		vault.WithAddress(cfg.VaultEndpoint),
-		vault.WithRequestTimeout(RequestTimeoutSeconds),
+		vault.WithRequestTimeout(RequestTimeout),
 		vault.WithTLS(tls),
 	)
 	if err != nil {
@@ -39,7 +39,6 @@ func ApproleAuthGetToken(cfg *config.Config) (string, error) {
 		},
 		vault.WithMountPath(cfg.VaultAppRolePath),
 	)
-
 	if err != nil {
 		return "", fmt.Errorf("error getting vault token: %v", err)
 	}

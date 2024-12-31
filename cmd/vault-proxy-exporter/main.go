@@ -31,5 +31,4 @@ func main() {
 	if err := p.Run(); err != nil {
 		log.Fatalf("error running vault-proxy-exporter: %v", err)
 	}
-
 }

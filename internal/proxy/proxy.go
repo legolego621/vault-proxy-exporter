@@ -24,6 +24,7 @@ import (
 const (
 	VaultPathMetrics = "/vault/metrics"
 	ProxyPathMetrics = "/exporter/metrics"
+	ProxyTimeout     = 60 * time.Second
 )
 
 type Proxy struct {
@@ -82,15 +83,15 @@ func (p *Proxy) ProxyStart(ctx context.Context, wg *sync.WaitGroup, errChan chan
 
 	target := p.VaultConfig.VaultEndpoint
 
-	targetUrl, err := url.Parse(target)
+	targetURL, err := url.Parse(target)
 	if err != nil {
-		fmt.Errorf("error parsing url '%s' vault metrics endpoint: %v", target, err)
+		log.Errorf("error parsing url '%s' vault metrics endpoint: %v", target, err)
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(targetUrl)
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	proxy.Transport = &http.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: p.VaultConfig.VaultTLSInsecureSkipVerify,
+			InsecureSkipVerify: p.VaultConfig.VaultTLSInsecureSkipVerify, //nolint:gosec // allow insecure skip verify to vault localhost
 		},
 	}
 
@@ -100,7 +101,7 @@ func (p *Proxy) ProxyStart(ctx context.Context, wg *sync.WaitGroup, errChan chan
 			realPath := config.VaultPrometheusMetricsPath
 			params := config.VaultPrometheusMetricsParams
 
-			r.Host = targetUrl.Host
+			r.Host = targetURL.Host
 			r.URL.Path = realPath
 			r.URL.RawQuery = params
 			r.Header.Set("Authorization", "Bearer "+p.VaultConfig.VaultToken)
@@ -109,7 +110,7 @@ func (p *Proxy) ProxyStart(ctx context.Context, wg *sync.WaitGroup, errChan chan
 
 			w.Header().Set("X-Proxy-Server", "vault-proxy-exporter")
 
-			uri := fmt.Sprintf("%s://%s%s", targetUrl.Scheme, targetUrl.Host, r.URL.RequestURI())
+			uri := fmt.Sprintf("%s://%s%s", targetURL.Scheme, targetURL.Host, r.URL.RequestURI())
 			log.Debugf("ip: %s, method: %s, proxy-path: %s, uri: %s",
 				realIP,
 				r.Method,
@@ -125,7 +126,8 @@ func (p *Proxy) ProxyStart(ctx context.Context, wg *sync.WaitGroup, errChan chan
 	http.Handle(ProxyPathMetrics, promhttp.Handler())
 
 	server := &http.Server{
-		Addr: p.AddressServer,
+		Addr:              p.AddressServer,
+		ReadHeaderTimeout: ProxyTimeout,
 	}
 
 	errChanServe := make(chan error, 1)
@@ -147,8 +149,6 @@ func (p *Proxy) ProxyStart(ctx context.Context, wg *sync.WaitGroup, errChan chan
 			return
 		}
 	}
-
-	return
 }
 
 func getClientIP(r *http.Request) string {
