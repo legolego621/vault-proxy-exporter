@@ -24,12 +24,14 @@ import (
 const (
 	VaultPathMetrics = "/vault/metrics"
 	ProxyPathMetrics = "/exporter/metrics"
+	ProxyPathHealth  = "/exporter/health"
 	ProxyTimeout     = 60 * time.Second
 )
 
 type Proxy struct {
 	AddressServer string
 	VaultConfig   *config.Config
+	Health        bool
 }
 
 func New(addressServer string, vaultConfig *config.Config) *Proxy {
@@ -44,7 +46,7 @@ func (p *Proxy) Run() error {
 
 	var wg sync.WaitGroup
 
-	wg.Add(2)
+	wg.Add(1)
 
 	ctx, stop := signal.NotifyContext(context.Background(),
 		syscall.SIGHUP,
@@ -56,7 +58,11 @@ func (p *Proxy) Run() error {
 	errChan := make(chan error, 1)
 
 	go p.ProxyStart(ctx, &wg, errChan)
-	go updateToken(ctx, &wg, p)
+
+	if p.VaultConfig.VaultAuthMethod == config.VaultMethodAppRole {
+		wg.Add(1)
+		go updateToken(ctx, &wg, p)
+	}
 
 	select {
 	case <-ctx.Done():
@@ -95,34 +101,8 @@ func (p *Proxy) ProxyStart(ctx context.Context, wg *sync.WaitGroup, errChan chan
 		},
 	}
 
-	handler := func(rp *httputil.ReverseProxy) func(http.ResponseWriter, *http.Request) {
-		return func(w http.ResponseWriter, r *http.Request) {
-			realIP := getClientIP(r)
-			realPath := config.VaultPrometheusMetricsPath
-			params := config.VaultPrometheusMetricsParams
-
-			r.Host = targetURL.Host
-			r.URL.Path = realPath
-			r.URL.RawQuery = params
-			r.Header.Set("Authorization", "Bearer "+p.VaultConfig.VaultToken)
-			r.Header.Set("X-Forwarded-For", realIP)
-			r.Header.Set("X-Forwarded-Host", r.Host)
-
-			w.Header().Set("X-Proxy-Server", "vault-proxy-exporter")
-
-			uri := fmt.Sprintf("%s://%s%s", targetURL.Scheme, targetURL.Host, r.URL.RequestURI())
-			log.Debugf("ip: %s, method: %s, proxy-path: %s, uri: %s",
-				realIP,
-				r.Method,
-				r.URL.Path,
-				uri,
-			)
-
-			rp.ServeHTTP(w, r)
-		}
-	}
-
-	http.HandleFunc(VaultPathMetrics, handler(proxy))
+	http.HandleFunc(ProxyPathHealth, p.handlerHealth)
+	http.HandleFunc(VaultPathMetrics, p.handlerVaultMetrics(proxy, targetURL))
 	http.Handle(ProxyPathMetrics, promhttp.Handler())
 
 	server := &http.Server{
@@ -149,6 +129,47 @@ func (p *Proxy) ProxyStart(ctx context.Context, wg *sync.WaitGroup, errChan chan
 			return
 		}
 	}
+}
+
+func (p *Proxy) handlerHealth(w http.ResponseWriter, r *http.Request) {
+	if p.isHealthy() {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "Exporter is healthy")
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, "Exporter is unhealthy")
+	}
+}
+
+func (p *Proxy) handlerVaultMetrics(rp *httputil.ReverseProxy, targetURL *url.URL) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		realIP := getClientIP(r)
+		realPath := config.VaultPrometheusMetricsPath
+		params := config.VaultPrometheusMetricsParams
+
+		r.Host = targetURL.Host
+		r.URL.Path = realPath
+		r.URL.RawQuery = params
+		r.Header.Set("Authorization", "Bearer "+p.VaultConfig.VaultToken)
+		r.Header.Set("X-Forwarded-For", realIP)
+		r.Header.Set("X-Forwarded-Host", r.Host)
+
+		w.Header().Set("X-Proxy-Server", "vault-proxy-exporter")
+
+		uri := fmt.Sprintf("%s://%s%s", targetURL.Scheme, targetURL.Host, r.URL.RequestURI())
+		log.Debugf("ip: %s, method: %s, proxy-path: %s, uri: %s",
+			realIP,
+			r.Method,
+			r.URL.Path,
+			uri,
+		)
+
+		rp.ServeHTTP(w, r)
+	}
+}
+
+func (p *Proxy) isHealthy() bool {
+	return p.Health
 }
 
 func getClientIP(r *http.Request) string {
@@ -184,10 +205,13 @@ func updateToken(ctx context.Context, wg *sync.WaitGroup, p *Proxy) {
 	updater := func(p *Proxy) error {
 		token, err := vault.ApproleAuthGetToken(p.VaultConfig)
 		if err != nil {
+			p.Health = false
+
 			return err
 		}
 
 		p.VaultConfig.VaultToken = token
+		p.Health = true
 
 		return nil
 	}
