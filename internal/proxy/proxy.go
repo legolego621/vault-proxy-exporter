@@ -29,24 +29,22 @@ const (
 )
 
 type Proxy struct {
-	AddressServer string
-	VaultConfig   *config.Config
-	Health        bool
+	AddressMetricsServer string
+	AddressHealthServer  string
+	VaultConfig          *config.Config
+	Health               bool
 }
 
-func New(addressServer string, vaultConfig *config.Config) *Proxy {
+func New(addrMetricsServer, addrHealthServer string, vaultConfig *config.Config) *Proxy {
 	return &Proxy{
-		AddressServer: addressServer,
-		VaultConfig:   vaultConfig,
+		AddressMetricsServer: addrMetricsServer,
+		AddressHealthServer:  addrHealthServer,
+		VaultConfig:          vaultConfig,
 	}
 }
 
 func (p *Proxy) Run() error {
 	log.Info("init proxy")
-
-	var wg sync.WaitGroup
-
-	wg.Add(1)
 
 	ctx, stop := signal.NotifyContext(context.Background(),
 		syscall.SIGHUP,
@@ -55,9 +53,13 @@ func (p *Proxy) Run() error {
 		syscall.SIGQUIT)
 	defer stop()
 
-	errChan := make(chan error, 1)
+	var wg sync.WaitGroup
 
-	go p.ProxyStart(ctx, &wg, errChan)
+	wg.Add(2)
+	errChan := make(chan error, 2)
+
+	go p.startMetricsServer(ctx, &wg, errChan)
+	go p.startHealthServer(ctx, &wg, errChan)
 
 	if p.VaultConfig.VaultAuthMethod == config.VaultMethodAppRole {
 		wg.Add(1)
@@ -80,10 +82,10 @@ func (p *Proxy) Run() error {
 	return nil
 }
 
-func (p *Proxy) ProxyStart(ctx context.Context, wg *sync.WaitGroup, errChan chan<- error) {
+func (p *Proxy) startMetricsServer(ctx context.Context, wg *sync.WaitGroup, errChan chan<- error) {
 	defer wg.Done()
 
-	log.Infof("starting web server on %s", p.AddressServer)
+	log.Infof("starting metrics web server on %s", p.AddressMetricsServer)
 	log.Infof("proxy metrics path: %s", ProxyPathMetrics)
 	log.Infof("vault metrics path: %s", VaultPathMetrics)
 
@@ -101,12 +103,11 @@ func (p *Proxy) ProxyStart(ctx context.Context, wg *sync.WaitGroup, errChan chan
 		},
 	}
 
-	http.HandleFunc(ProxyPathHealth, p.handlerHealth)
 	http.HandleFunc(VaultPathMetrics, p.handlerVaultMetrics(proxy, targetURL))
 	http.Handle(ProxyPathMetrics, promhttp.Handler())
 
 	server := &http.Server{
-		Addr:              p.AddressServer,
+		Addr:              p.AddressMetricsServer,
 		ReadHeaderTimeout: ProxyTimeout,
 	}
 
@@ -118,13 +119,47 @@ func (p *Proxy) ProxyStart(ctx context.Context, wg *sync.WaitGroup, errChan chan
 
 	select {
 	case <-ctx.Done():
-		log.Info("shutting down web server")
+		log.Info("shutting down metrics web server")
 		errChan <- server.Shutdown(ctx)
 
 		return
 	case err := <-errChanServe:
 		if err != nil && err != http.ErrServerClosed {
-			errChan <- fmt.Errorf("server error: %v", err)
+			errChan <- fmt.Errorf("metrics web server error: %v", err)
+
+			return
+		}
+	}
+}
+
+func (p *Proxy) startHealthServer(ctx context.Context, wg *sync.WaitGroup, errChan chan<- error) {
+	defer wg.Done()
+
+	log.Infof("starting health web server on %s", p.AddressHealthServer)
+	log.Infof("health path: %s", ProxyPathHealth)
+
+	http.HandleFunc(ProxyPathHealth, p.handlerHealth)
+
+	server := &http.Server{
+		Addr:              p.AddressHealthServer,
+		ReadHeaderTimeout: ProxyTimeout,
+	}
+
+	errChanServe := make(chan error, 1)
+
+	go func() {
+		errChanServe <- server.ListenAndServe()
+	}()
+
+	select {
+	case <-ctx.Done():
+		log.Info("shutting down health web server")
+		errChan <- server.Shutdown(ctx)
+
+		return
+	case err := <-errChanServe:
+		if err != nil && err != http.ErrServerClosed {
+			errChan <- fmt.Errorf("health web server error: %v", err)
 
 			return
 		}

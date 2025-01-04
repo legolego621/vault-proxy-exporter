@@ -9,7 +9,8 @@ import (
 )
 
 func main() {
-	addrServer := flag.String("web.listen-address", ":9010", "Listening address of web server")
+	addrMetricsServer := flag.String("web.metrics-listen-address", ":9010", "Listening address of metrics web server")
+	addrHealthServer := flag.String("web.health-listen-address", ":8080", "Listening address of health web server")
 	logLevel := flag.String("log.level", "info", "Set log level")
 
 	flag.Parse()
@@ -27,7 +28,7 @@ func main() {
 		log.Fatalf("error loading configuration: %v", err)
 	}
 
-	p := proxy.New(*addrServer, cfg)
+	p := proxy.New(*addrMetricsServer, *addrHealthServer, cfg)
 	if err := p.Run(); err != nil {
 		log.Fatalf("error running vault-proxy-exporter: %v", err)
 	}
