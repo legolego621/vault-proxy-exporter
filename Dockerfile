@@ -18,7 +18,9 @@ RUN apk add --no-cache \
 
 RUN addgroup ${NAME} && adduser -S -G ${NAME} ${NAME}
 
-EXPOSE 9010
+ENV HOME=/home/${NAME}
+
+USER ${NAME}
 
 COPY --from=builder /build/${NAME} /bin/${NAME}
 
