@@ -1,0 +1,119 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vault-proxy-exporter.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vault-proxy-exporter.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "vault-proxy-exporter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "vault-proxy-exporter.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "vault-proxy-exporter.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - {{ .Chart.Name }}
+            - --web.health-listen-address=:8080
+            {{- if .Values.kubeRbacProxy.enabled }}
+            - --web.metrics-listen-address=127.0.0.1:9010
+            {{- else }}
+            - --web.metrics-listen-address=:9010
+            {{- end }}
+            - --log.level={{ .Values.logLevel }}
+          {{- if not .Values.kubeRbacProxy.enabled }}
+          ports:
+            - containerPort: 9010
+              name: http
+              protocol: TCP
+          {{- end }}
+          {{- with .Values.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- with .Values.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- if .Values.kubeRbacProxy.enabled }}
+        - name: kube-rbac-proxy
+          image: {{ .Values.kubeRbacProxy.image.repository }}:{{ .Values.kubeRbacProxy.image.tag }}
+          imagePullPolicy: {{ .Values.kubeRbacProxy.image.pullPolicy }}
+          args:
+          - --secure-listen-address=0.0.0.0:8443
+          - --upstream=http://127.0.0.1:9010/
+          - --tls-private-key-file=/etc/tls/tls.key
+          - --tls-cert-file=/etc/tls/tls.crt
+          {{- range $opt, $val := .Values.kubeRbacProxy.options }}
+          - --{{ $opt | kebabcase }}={{ $val }}
+          {{- end }}
+          ports:
+          - containerPort: 8443
+            name: https
+            protocol: TCP
+          resources:
+            {{- toYaml .Values.kubeRbacProxy.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.kubeRbacProxy.securityContext | nindent 12}}
+          volumeMounts:
+            - mountPath: /etc/tls
+              name: cert
+        {{- end }}
+      
+      volumes:
+        {{- if .Values.kubeRbacProxy.enabled }}
+        - name: cert
+          secret:
+            defaultMode: 420
+            secretName: {{ include "vault-proxy-exporter.certifcateName" . }}
+        {{- end }}
+        {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

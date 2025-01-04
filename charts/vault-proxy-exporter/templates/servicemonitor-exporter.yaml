@@ -1,0 +1,47 @@
+{{- if .Values.serviceMonitor.exporterMetrics.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "vault-proxy-exporter.fullname" . }}-exporter-metrics
+  namespace: {{ .Values.serviceMonitor.exporterMetrics.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "vault-proxy-exporter.labels" . | nindent 4 }}
+    {{- if .Values.serviceMonitor.exporterMetrics.labels }}
+    {{- toYaml .Values.serviceMonitor.exporterMetrics.labels | nindent 4 }}
+    {{- end }}
+spec:
+  endpoints:
+  - path: /exporter/metrics
+    interval: {{ .Values.serviceMonitor.exporterMetrics.scrapeInterval }}
+    port: metrics
+    {{- if .Values.kubeRbacProxy.enabled }}
+    scheme: https
+    {{- else }}
+    scheme: http
+    {{- end }}
+    {{- if .Values.serviceMonitor.exporterMetrics.honorLabels }}
+    honorLabels: true
+    {{- end }}
+    {{- if .Values.serviceMonitor.exporterMetrics.relabelings }}
+    relabelings: {{ toYaml .Values.serviceMonitor.exporterMetrics.relabelings | nindent 6 }}
+    {{- end }}
+    {{- if .Values.serviceMonitor.exporterMetrics.metricRelabelings }}
+    metricRelabelings: {{ toYaml .Values.serviceMonitor.exporterMetrics.metricRelabelings | nindent 6 }}
+    {{- end }}
+    {{- if .Values.serviceMonitor.exporterMetrics.tlsConfig }}
+    tlsConfig: {{ toYaml .Values.serviceMonitor.exporterMetrics.tlsConfig | nindent 6 }}
+    {{- end }}
+    {{- if .Values.serviceMonitor.exporterMetrics.bearerTokenFile }}
+    bearerTokenFile: {{ toYaml .Values.serviceMonitor.exporterMetrics.bearerTokenFile }}
+    {{- end }}
+  {{- if .Values.serviceMonitor.exporterMetrics.namespaceSelector }}
+  namespaceSelector: {{ toYaml .Values.serviceMonitor.exporterMetrics.namespaceSelector | nindent 4 }}
+  {{- else }}
+  namespaceSelector:
+    matchNames:
+    - {{ .Release.Namespace }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "vault-proxy-exporter.selectorLabels" . | nindent 6 }}
+{{- end }}

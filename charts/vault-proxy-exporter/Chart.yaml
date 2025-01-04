@@ -1,0 +1,8 @@
+apiVersion: v2
+name: vault-proxy-exporter
+description: Helm for deploy vault-proxy-exporter
+type: application
+version: 0.1.0
+appVersion: "v1.0.3"
+sources:
+- https://github.com/legolego621/vault-proxy-exporter
