@@ -1,0 +1,16 @@
+apiVersion: v1
+entries:
+  vault-proxy-exporter:
+  - apiVersion: v2
+    appVersion: v1.0.3
+    created: "2025-01-04T11:23:37.043467617+03:00"
+    description: Helm for deploy vault-proxy-exporter
+    digest: 668e8ebbad1c95add84acfcbabd0735e39f7d7da0527a49b78ef659b56ebfb54
+    name: vault-proxy-exporter
+    sources:
+    - https://github.com/legolego621/vault-proxy-exporter
+    type: application
+    urls:
+    - https://legolego621.github.io/vault-proxy-exporter/charts/vault-proxy-exporter-0.1.0.tgz
+    version: 0.1.0
+generated: "2025-01-04T11:23:37.04268756+03:00"
