@@ -11,6 +11,6 @@ entries:
     - https://github.com/legolego621/vault-proxy-exporter
     type: application
     urls:
-    - https://legolego621.github.io/vault-proxy-exporter/charts/vault-proxy-exporter-0.1.0.tgz
+    - https://legolego621.github.io/vault-proxy-exporter/helm/charts/vault-proxy-exporter-0.1.0.tgz
     version: 0.1.0
 generated: "2025-01-04T11:23:37.04268756+03:00"
